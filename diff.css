@@ -1,0 +1,121 @@
+/* ===========================
+   配色・全体レイアウト（白基調＋青/水色アクセント）
+   =========================== */
+:root{
+  --bg:#f5f7fb;          /* ページ背景（ごく薄いグレー） */
+  --card:#ffffff;        /* カード背景（白） */
+  --text:#333;           /* 標準文字色 */
+  --muted:#666;          /* 補助文字色 */
+  --line:#777;           /* 行番号文字色 */
+  --border:#ddd;         /* 枠線色 */
+
+  --accent:#1e88e5;      /* メイン青（ボタン等） */
+  --accent-weak:#e3f2fd; /* ごく薄い水色（ヘッダ背景など） */
+
+  /* 差分の背景色（淡色） */
+  --eq:#ffffff;          /* 共通行 */
+  --ins:#e3f2fd;         /* 追加（水色） */
+  --ins-text:#0d47a1;    /* 追加文字（濃青） */
+  --del:#ffebee;         /* 削除（淡赤） */
+  --del-text:#b71c1c;    /* 削除文字（濃赤） */
+  --mod:#fff8e1;         /* 変更（淡黄） */
+  --mod-text:#665c00;    /* 変更文字 */
+
+  /* 行内の強調（<mark>） */
+  --markAdd:#bbdefb;     /* 行内追加のハイライト（水色） */
+  --markDel:#ffcdd2;     /* 行内削除のハイライト（薄赤） */
+}
+
+*{ box-sizing:border-box; }
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+}
+.wrap{ max-width:1200px; margin:24px auto; padding:0 12px; }
+h1{ margin:0 0 12px; font-size:1.15rem; font-weight:700; letter-spacing:.02em; }
+
+/* カード風の囲い（影＋角丸） */
+.card{
+  background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px;
+  box-shadow:0 8px 20px rgba(0,0,0,.06);
+}
+
+/* 2カラムレイアウト（左右のテキストエリア／結果ペイン） */
+.row{ display:grid; gap:12px; }
+.row.cols-2{ grid-template-columns:1fr 1fr; }
+
+label{ display:block; font-size:.92rem; color:var(--muted); margin:0 0 6px; }
+
+/* 入力テキストエリア（白地＋薄枠） */
+textarea{
+  width:100%; min-height:220px; resize:vertical;
+  background:#fff; color:var(--text);
+  border:1px solid var(--border); border-radius:10px; padding:10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+  line-height:1.45;
+}
+/* フォーカス時のアウトライン（アクセシビリティ向上） */
+textarea:focus{
+  outline:none; border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(30,136,229,.12);
+}
+
+/* 操作パネル（ボタン＋オプション） */
+.tools{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:10px; }
+.btn{
+  appearance:none; cursor:pointer; user-select:none;
+  border:1px solid var(--border); background:#f3f6fb; color:var(--text);
+  padding:10px 14px; border-radius:10px; font-weight:600;
+  transition:background .15s, border-color .2s, transform .04s;
+}
+.btn:hover{ border-color:#c9d5e6; background:#eef3fb; }
+.btn:active{ transform:translateY(1px); }
+.btn.primary{ background:var(--accent); color:#fff; border-color:transparent; }
+.btn.primary:hover{ filter:brightness(1.05); }
+
+.opt{ display:flex; gap:6px; align-items:center; margin-right:10px; font-size:.92rem; color:var(--muted); }
+.opt input{ accent-color:var(--accent); }
+
+.stats{ margin-left:auto; font-size:.9rem; color:var(--muted); }
+
+/* 結果の外枠（見出し＋グリッド本体） */
+.results{
+  margin-top:16px; border:1px solid var(--border); border-radius:14px; overflow:hidden; background:#fff;
+}
+/* 結果ヘッダ（左=旧／右=新） */
+.header{
+  display:grid; grid-template-columns:1fr 1fr;
+  background:var(--accent-weak); border-bottom:1px solid var(--border);
+  color:#0b3c7d; font-weight:700;
+}
+.header > div{ padding:10px 12px; }
+
+/* 差分グリッド（左右2カラム、縦方向スクロール） */
+.grid{
+  display:grid; grid-template-columns:1fr 1fr; max-height:480px; overflow:auto; scroll-behavior:smooth;
+}
+
+/* 各セル（1行分）：[行番号] [本文] の2カラム構成 */
+.cell{
+  display:grid; grid-template-columns:56px 1fr; border-bottom:1px solid #eee;
+  white-space:pre-wrap; word-break:break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+  font-size:.93rem;
+}
+.ln{ /* 行番号の見た目（背景薄く、右寄せ） */
+  background:#fafbfe; color:var(--line); border-right:1px solid #eee; padding:6px 8px; text-align:right; user-select:none;
+}
+.code{ padding:6px 10px; }
+
+/* 差分の種別ごとの背景色 */
+.eq { background:var(--eq); }                          /* 共通行（白） */
+.ins{ background:var(--ins); color:var(--ins-text); }  /* 追加（水色） */
+.del{ background:var(--del); color:var(--del-text); }  /* 削除（淡赤） */
+.mod{ background:var(--mod); color:var(--mod-text); }  /* 変更（淡黄） */
+
+/* 行内の強調（単語レベル差分） */
+mark.add{ background:var(--markAdd); padding:0 1px; border-radius:3px; }
+mark.del{ background:var(--markDel); padding:0 1px; border-radius:3px; text-decoration:line-through; }
+
+.footer-note{ color:var(--muted); font-size:.88rem; margin-top:10px; }
+.mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
