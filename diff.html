@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>ローカル差分ビューア（白基調・青アクセント）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- スタイル分離 -->
+  <link rel="stylesheet" href="diff.css" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>ローカル差分ビューア（白基調・青/水色アクセント／サイドバイサイド＋行内ハイライト）</h1>
+
+    <div class="card">
+      <!-- 左右の入力エリア：旧（左）／新（右） -->
+      <div class="row cols-2">
+        <div>
+          <label for="left">左（旧 / before）</label>
+          <textarea id="left" placeholder="旧バージョンのテキストやコードを貼り付け"></textarea>
+        </div>
+        <div>
+          <label for="right">右（新 / after）</label>
+          <textarea id="right" placeholder="新バージョンのテキストやコードを貼り付け"></textarea>
+        </div>
+      </div>
+
+      <!-- 操作ボタンとオプション -->
+      <div class="tools">
+        <button id="compare" class="btn primary">比較</button>
+        <button id="swap" class="btn">左右入れ替え</button>
+        <button id="clear" class="btn">クリア</button>
+
+        <label class="opt"><input id="ignoreCase" type="checkbox" /> 大文字小文字を無視</label>
+        <label class="opt"><input id="trimEnd" type="checkbox" checked /> 末尾空白を無視</label>
+        <label class="opt"><input id="inlineWords" type="checkbox" checked /> 行内（単語）差分を表示</label>
+
+        <div id="stats" class="stats">—</div>
+      </div>
+
+      <!-- 結果表示領域 -->
+      <div class="results">
+        <div class="header">
+          <div>旧</div>
+          <div>新</div>
+        </div>
+        <div id="grid" class="grid" aria-live="polite"></div>
+      </div>
+
+      <div class="footer-note">
+        使い方：左右にテキスト貼付 → <strong>比較</strong>。行の種類は
+        <span class="mono">+</span>（追加・水色）、
+        <span class="mono">-</span>（削除・淡赤）、
+        変更（淡黄）、
+        共通（白）です。変更行は行内でも追加/削除を強調表示します。
+      </div>
+    </div>
+  </div>
+
+  <!-- スクリプト分離 -->
+  <script src="diff.js" defer></script>
+</body>
+</html>
