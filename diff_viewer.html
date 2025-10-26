@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>ローカル差分ビューア（白基調・青アクセント／コメント付き）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    /* ===========================
+       配色・全体レイアウト（白基調＋青/水色アクセント）
+       ここで色を一元管理するため、CSSカスタムプロパティ(--xxx)を使用
+       =========================== */
+    :root{
+      --bg:#f5f7fb;          /* ページ背景（ごく薄いグレー） */
+      --card:#ffffff;        /* カード背景（白） */
+      --text:#333;           /* 標準文字色 */
+      --muted:#666;          /* 補助的な文字色（注釈など） */
+      --line:#777;           /* 行番号の文字色 */
+      --border:#ddd;         /* 枠線色 */
+
+      --accent:#1e88e5;      /* メインの青（ボタン等） */
+      --accent-weak:#e3f2fd; /* ごく薄い水色（ヘッダ背景など） */
+
+      /* 差分の背景色（淡色で可読性重視） */
+      --eq:#ffffff;          /* 共通行 */
+      --ins:#e3f2fd;         /* 追加行（水色） */
+      --ins-text:#0d47a1;    /* 追加行の文字色（濃い青） */
+      --del:#ffebee;         /* 削除行（淡いピンク） */
+      --del-text:#b71c1c;    /* 削除行の文字色（濃い赤） */
+      --mod:#fff8e1;         /* 変更行（淡い黄色） */
+      --mod-text:#665c00;    /* 変更行の文字色 */
+
+      /* 行内の追加/削除強調（<mark>） */
+      --markAdd:#bbdefb;     /* 行内追加のハイライト（水色） */
+      --markDel:#ffcdd2;     /* 行内削除のハイライト（薄赤） */
+    }
+
+    *{ box-sizing:border-box; }
+    body{
+      margin:0; background:var(--bg); color:var(--text);
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+    }
+    .wrap{ max-width:1200px; margin:24px auto; padding:0 12px; }
+    h1{ margin:0 0 12px; font-size:1.15rem; font-weight:700; letter-spacing:.02em; }
+
+    /* カード風の囲い（影＋角丸） */
+    .card{
+      background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px;
+      box-shadow:0 8px 20px rgba(0,0,0,.06);
+    }
+
+    /* 2カラムレイアウト（左右のテキストエリア／結果ペイン） */
+    .row{ display:grid; gap:12px; }
+    .row.cols-2{ grid-template-columns:1fr 1fr; }
+
+    label{ display:block; font-size:.92rem; color:var(--muted); margin:0 0 6px; }
+
+    /* 入力テキストエリア（白地＋薄枠） */
+    textarea{
+      width:100%; min-height:220px; resize:vertical;
+      background:#fff; color:var(--text);
+      border:1px solid var(--border); border-radius:10px; padding:10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      line-height:1.45;
+    }
+    /* フォーカス時に青いアウトラインを追加（アクセシビリティ向上） */
+    textarea:focus{
+      outline:none; border-color:var(--accent);
+      box-shadow:0 0 0 3px rgba(30,136,229,.12);
+    }
+
+    /* 操作パネル（ボタン＋オプション） */
+    .tools{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:10px; }
+    .btn{
+      appearance:none; cursor:pointer; user-select:none;
+      border:1px solid var(--border); background:#f3f6fb; color:var(--text);
+      padding:10px 14px; border-radius:10px; font-weight:600;
+      transition:background .15s, border-color .2s, transform .04s;
+    }
+    .btn:hover{ border-color:#c9d5e6; background:#eef3fb; }
+    .btn:active{ transform:translateY(1px); }
+    .btn.primary{ background:var(--accent); color:#fff; border-color:transparent; }
+    .btn.primary:hover{ filter:brightness(1.05); }
+
+    .opt{ display:flex; gap:6px; align-items:center; margin-right:10px; font-size:.92rem; color:var(--muted); }
+    .opt input{ accent-color:var(--accent); }
+
+    .stats{ margin-left:auto; font-size:.9rem; color:var(--muted); }
+
+    /* 結果の外枠（見出し＋グリッド本体） */
+    .results{
+      margin-top:16px; border:1px solid var(--border); border-radius:14px; overflow:hidden; background:#fff;
+    }
+    /* 結果ヘッダ（左=旧／右=新） */
+    .header{
+      display:grid; grid-template-columns:1fr 1fr;
+      background:var(--accent-weak); border-bottom:1px solid var(--border);
+      color:#0b3c7d; font-weight:700;
+    }
+    .header > div{ padding:10px 12px; }
+
+    /* 差分グリッド（左右2カラム、縦方向スクロール） */
+    .grid{
+      display:grid; grid-template-columns:1fr 1fr; max-height:480px; overflow:auto; scroll-behavior:smooth;
+    }
+
+    /* 各セル（1行分）：[行番号] [本文] の2カラム構成 */
+    .cell{
+      display:grid; grid-template-columns:56px 1fr; border-bottom:1px solid #eee;
+      white-space:pre-wrap; word-break:break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+      font-size:.93rem;
+    }
+    .ln{ /* 行番号の見た目（背景薄く、右寄せ） */
+      background:#fafbfe; color:var(--line); border-right:1px solid #eee; padding:6px 8px; text-align:right; user-select:none;
+    }
+    .code{ padding:6px 10px; }
+
+    /* 差分の種別ごとの背景色 */
+    .eq { background:var(--eq); }        /* 共通行（白） */
+    .ins{ background:var(--ins); color:var(--ins-text); } /* 追加（水色） */
+    .del{ background:var(--del); color:var(--del-text); } /* 削除（淡赤） */
+    .mod{ background:var(--mod); color:var(--mod-text); } /* 変更（淡黄） */
+
+    /* 行内の強調（単語レベル差分） */
+    mark.add{ background:var(--markAdd); padding:0 1px; border-radius:3px; }
+    mark.del{ background:var(--markDel); padding:0 1px; border-radius:3px; text-decoration:line-through; }
+
+    .footer-note{ color:var(--muted); font-size:.88rem; margin-top:10px; }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>ローカル差分ビューア（白基調・青/水色アクセント／サイドバイサイド＋行内ハイライト）</h1>
+
+    <div class="card">
+      <!-- 左右の入力エリア：旧（左）／新（右） -->
+      <div class="row cols-2">
+        <div>
+          <label for="left">左（旧 / before）</label>
+          <textarea id="left" placeholder="旧バージョンのテキストやコードを貼り付け"></textarea>
+        </div>
+        <div>
+          <label for="right">右（新 / after）</label>
+          <textarea id="right" placeholder="新バージョンのテキストやコードを貼り付け"></textarea>
+        </div>
+      </div>
+
+      <!-- 操作ボタンとオプション -->
+      <div class="tools">
+        <button id="compare" class="btn primary">比較</button>   <!-- 差分を計算して表示 -->
+        <button id="swap" class="btn">左右入れ替え</button>      <!-- 入力値を左右で入れ替え -->
+        <button id="clear" class="btn">クリア</button>            <!-- 入力と結果を初期化 -->
+
+        <!-- 比較の前処理オプション -->
+        <label class="opt"><input id="ignoreCase" type="checkbox" /> 大文字小文字を無視</label>
+        <label class="opt"><input id="trimEnd" type="checkbox" checked /> 末尾空白を無視</label>
+        <label class="opt"><input id="inlineWords" type="checkbox" checked /> 行内（単語）差分を表示</label>
+
+        <!-- 行数統計（共通/追加/削除/変更） -->
+        <div id="stats" class="stats">—</div>
+      </div>
+
+      <!-- 結果表示領域（ヘッダ＋本体） -->
+      <div class="results">
+        <div class="header">
+          <div>旧</div>
+          <div>新</div>
+        </div>
+        <div id="grid" class="grid" aria-live="polite"></div>
+      </div>
+
+      <div class="footer-note">
+        使い方：左右にテキスト貼付 → <strong>比較</strong>。同一画面に差分を表示します。行の種類は
+        <span class="mono">+</span>（追加・水色）、
+        <span class="mono">-</span>（削除・淡赤）、
+        変更（淡黄）、
+        共通（白）です。変更行は行内でも追加/削除を強調表示します。
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ========================================
+       ユーティリティ関数
+       ======================================== */
+
+    // getElementById の短縮
+    const byId = (id) => document.getElementById(id);
+
+    // HTMLに埋め込む文字列のエスケープ（XSS対策）
+    function escapeHtml(s){
+      return s.replace(/[&<>"']/g, ch => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[ch]));
+    }
+
+    /* ========================================
+       前処理：改行正規化／末尾空白削除／大文字小文字無視
+       - 比較前にノイズを減らして、意図しない差分を避ける
+       ======================================== */
+    function preprocess(text, { ignoreCase, trimEnd }) {
+      // 改行コードを \n に統一（Windowsの \r\n や \r を吸収）
+      let t = text.replace(/\r\n?/g, '\n');
+
+      // 行末の空白（スペース/タブなど）を削除（オプション）
+      if (trimEnd) {
+        t = t.split('\n').map(l => l.replace(/\s+$/,'')).join('\n');
+      }
+
+      // 大文字小文字を無視するために小文字化（オプション）
+      if (ignoreCase) t = t.toLowerCase();
+
+      return t;
+    }
+
+    /* ========================================
+       行単位の差分（LCS: 最長共通部分列）
+       - equal / insert / delete を算出
+       - 可読性のため delete + insert を modify に統合
+       ======================================== */
+    function diffLines(aText, bText) {
+      const A = aText.split('\n');  // 旧テキストを行配列へ
+      const B = bText.split('\n');  // 新テキストを行配列へ
+      const n = A.length, m = B.length;
+
+      // LCS用のDPテーブルを作成（dp[i][j] は A[0..i-1],B[0..j-1] のLCS長）
+      const dp = Array.from({length:n+1},()=>new Array(m+1).fill(0));
+      for (let i=1;i<=n;i++){
+        for (let j=1;j<=m;j++){
+          dp[i][j] = (A[i-1]===B[j-1]) ? dp[i-1][j-1]+1 : Math.max(dp[i-1][j], dp[i][j-1]);
+        }
+      }
+
+      // DPテーブルから操作列を復元
+      const ops = [];
+      let i=n, j=m;
+      while (i>0 || j>0) {
+        if (i>0 && j>0 && A[i-1]===B[j-1]) {
+          // 行が一致 → equal
+          ops.push({ type:'equal', a:A[i-1], b:B[j-1] });
+          i--; j--;
+        } else if (j>0 && (i===0 || dp[i][j-1] >= dp[i-1][j])) {
+          // B側にだけある行 → insert（新規追加）
+          ops.push({ type:'insert', a:'', b:B[j-1] });
+          j--;
+        } else if (i>0 && (j===0 || dp[i][j-1] < dp[i-1][j])) {
+          // A側にだけある行 → delete（削除）
+          ops.push({ type:'delete', a:A[i-1], b:'' });
+          i--;
+        }
+      }
+      ops.reverse(); // 復元で逆順になるため正順へ
+
+      // 連続する delete の直後に insert が来た場合、1行の「変更」として扱う
+      const merged = [];
+      for (let k=0;k<ops.length;k++){
+        const cur = ops[k];
+        const prev = merged[merged.length-1];
+        if (prev && prev.type==='delete' && cur.type==='insert') {
+          // delete + insert → modify（変更）
+          merged[merged.length-1] = { type:'modify', a:prev.a, b:cur.b };
+        } else {
+          merged.push(cur);
+        }
+      }
+      return { ops: merged };
+    }
+
+    /* ========================================
+       行内（単語/トークン）レベルの差分（LCS）
+       - modify（変更）行のみ対象
+       - 追加は <mark class="add">、削除は <mark class="del"> で強調
+       ======================================== */
+    function wordDiff(aLine, bLine) {
+      // トークン分割：Unicodeの文字クラスを使い、「単語」「空白」「記号」を取りこぼさない
+      const tok = s => s.match(/[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]|[\s]+/gu) || [];
+      const A = tok(aLine), B = tok(bLine);
+      const n=A.length, m=B.length;
+
+      // LCS DPテーブル作成（トークン列に対して）
+      const dp = Array.from({length:n+1},()=>new Array(m+1).fill(0));
+      for (let i=1;i<=n;i++){
+        for (let j=1;j<=m;j++){
+          dp[i][j] = (A[i-1]===B[j-1]) ? dp[i-1][j-1]+1 : Math.max(dp[i-1][j], dp[i][j-1]);
+        }
+      }
+
+      // 復元して行内HTMLを構築
+      const partsA=[], partsB=[];
+      let i=n, j=m;
+      while (i>0 || j>0) {
+        if (i>0 && j>0 && A[i-1]===B[j-1]) {
+          // 共通トークン
+          partsA.push(escapeHtml(A[i-1]));
+          partsB.push(escapeHtml(B[j-1]));
+          i--; j--;
+        } else if (j>0 && (i===0 || dp[i][j-1] >= dp[i-1][j])) {
+          // Bにしかない → 追加
+          partsB.push(`<mark class="add">${escapeHtml(B[j-1])}</mark>`);
+          j--;
+        } else if (i>0 && (j===0 || dp[i][j-1] < dp[i-1][j])) {
+          // Aにしかない → 削除
+          partsA.push(`<mark class="del">${escapeHtml(A[i-1])}</mark>`);
+          i--;
+        }
+      }
+      // 復元結果を正順にして返す
+      return { aHtml: partsA.reverse().join(''), bHtml: partsB.reverse().join('') };
+    }
+
+    /* ========================================
+       レンダリング：#grid に差分を2カラムで描画
+       - 行番号はA側/B側で別カウント（空側は空欄）
+       - 種別に応じて背景色クラスを付与（eq/ins/del/mod）
+       - inlineWords オン時は modify 行に wordDiff を適用
+       ======================================== */
+    function renderDiff(container, ops, { inlineWords }) {
+      container.innerHTML = '';          // 前回結果をクリア
+      let lnA=0, lnB=0;                  // 行番号カウンタ（A/B）
+      let add=0, del=0, mod=0, eq=0;     // 行種別の集計
+
+      for (const op of ops) {
+        // 左右のセルを生成（1つの op に対して左/右を1つずつ）
+        const left = document.createElement('div');
+        const right = document.createElement('div');
+
+        // 見た目用のクラス（背景色）を種別に応じて設定
+        left.className  = 'cell ' + (op.type==='insert' ? 'eq' : op.type==='delete' ? 'del' : op.type==='modify' ? 'mod' : 'eq');
+        right.className = 'cell ' + (op.type==='delete' ? 'eq' : op.type==='insert' ? 'ins' : op.type==='modify' ? 'mod' : 'eq');
+
+        // 行番号・本文用の要素を用意
+        const lnLeft = document.createElement('div');  lnLeft.className = 'ln';
+        const lnRight= document.createElement('div');  lnRight.className= 'ln';
+        const codeLeft = document.createElement('div'); codeLeft.className = 'code';
+        const codeRight= document.createElement('div'); codeRight.className= 'code';
+
+        // 種別ごとの表示ロジック
+        if (op.type==='insert') {           // 右のみ本文あり（新規追加）
+          lnLeft.textContent = ''; codeLeft.textContent = '';
+          lnB++; lnRight.textContent = lnB; codeRight.innerHTML = escapeHtml(op.b);
+        } else if (op.type==='delete') {    // 左のみ本文あり（削除）
+          lnA++; lnLeft.textContent = lnA; codeLeft.innerHTML = escapeHtml(op.a);
+          lnRight.textContent = ''; codeRight.textContent = '';
+        } else if (op.type==='modify') {    // 左右とも本文あり（変更）
+          lnA++; lnLeft.textContent = lnA;
+          lnB++; lnRight.textContent = lnB;
+          if (inlineWords) {
+            // 行内（単語）差分を適用
+            const { aHtml, bHtml } = wordDiff(op.a, op.b);
+            codeLeft.innerHTML = aHtml;
+            codeRight.innerHTML = bHtml;
+          } else {
+            // 行内差分オフ → 生のテキストをそのまま表示
+            codeLeft.innerHTML = escapeHtml(op.a);
+            codeRight.innerHTML = escapeHtml(op.b);
+          }
+        } else {                            // 共通行（equal）
+          lnA++; lnLeft.textContent = lnA; codeLeft.innerHTML = escapeHtml(op.a);
+          lnB++; lnRight.textContent = lnB; codeRight.innerHTML = escapeHtml(op.b);
+        }
+
+        // DOMへ追加（左→右の順で並べ、2カラムを形成）
+        left.prepend(lnLeft); left.appendChild(codeLeft);
+        right.prepend(lnRight); right.appendChild(codeRight);
+        container.appendChild(left);
+        container.appendChild(right);
+
+        // 種別の集計カウント
+        if (op.type==='equal') eq++;
+        if (op.type==='insert') add++;
+        if (op.type==='delete') del++;
+        if (op.type==='modify') mod++;
+      }
+
+      // 呼び出し側（#stats表示用）に集計結果を返す
+      return { add, del, mod, eq };
+    }
+
+    /* ========================================
+       イベント配線：ボタン操作 → 差分計算／描画
+       ======================================== */
+    // 入力欄とボタン、オプション、結果領域の参照を取得
+    const left     = byId('left');
+    const right    = byId('right');
+    const compare  = byId('compare');
+    const swapBtn  = byId('swap');
+    const clearBtn = byId('clear');
+    const ignoreCase = byId('ignoreCase');
+    const trimEnd    = byId('trimEnd');
+    const inlineWords= byId('inlineWords');
+    const statsEl    = byId('stats');
+    const grid       = byId('grid');
+
+    // 「比較」クリック：前処理 → 行差分 → レンダリング → 統計表示
+    compare.addEventListener('click', () => {
+      const opt = { ignoreCase: ignoreCase.checked, trimEnd: trimEnd.checked };
+      const a = preprocess(left.value, opt);   // 旧テキストの前処理
+      const b = preprocess(right.value, opt);  // 新テキストの前処理
+      const { ops } = diffLines(a, b);         // 行単位の差分を算出
+      const { add, del, mod, eq } = renderDiff(grid, ops, { inlineWords: inlineWords.checked }); // 描画＆集計
+      statsEl.textContent = `共通:${eq}  追加(+):${add}  削除(-):${del}  変更(±):${mod}`;      // 統計を表示
+    });
+
+    // 「左右入れ替え」クリック：左右の入力値を単純に交換
+    swapBtn.addEventListener('click', () => {
+      [left.value, right.value] = [right.value, left.value];
+    });
+
+    // 「クリア」クリック：入力・結果・統計の初期化
+    clearBtn.addEventListener('click', () => {
+      left.value=''; right.value=''; grid.innerHTML=''; statsEl.textContent='—';
+    });
+
+    /* ========================================
+       デモ用プレースホルダ（初期値）
+       - すぐに比較ボタンで動作確認できるよう、軽いサンプルを設定
+       - 実運用時は削除してもOK
+       ======================================== */
+    left.value =
+`function hello(name) {
+  console.log("Hello, " + name + "!");
+}
+
+const nums = [1,2,3];
+for (let i=0;i<nums.length;i++){
+  // TODO: sum
+  console.log(nums[i]);
+}`;
+    right.value =
+`function hello(name, excited=false) {
+  const base = "Hello, " + name;
+  console.log(excited ? base + "!!!" : base + "!");
+}
+
+const numbers = [1, 2, 3, 4];
+for (const n of numbers) {
+  console.log(n);
+}
+// sum:
+console.log(numbers.reduce((a,b)=>a+b,0));`;
+  </script>
+</body>
+</html>
